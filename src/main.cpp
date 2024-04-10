@@ -7,6 +7,8 @@
 #include <WiFiClient.h>
 #include <BlynkSimpleEsp32.h>
 #include "pitches.h"
+#include <Wire.h> 
+#include "SparkFun_Qwiic_Rfid.h"
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
@@ -30,23 +32,26 @@ const float MELODY_BEATS[MELODY_LEN] = {0.25, 0.25, 0.25, 0.25, 0.75, 0.75, 1, 0
 const uint8_t TRITONE_LEN = 2; // # of notes (including rests)
 const uint16_t TRITONE[TRITONE_LEN] = {NOTE_F5, NOTE_B4};
 const float TRITONE_BEATS[TRITONE_LEN] = {0.5, 0.5};
+//Timing
+const int openTime = 15000; // 15 seconds
+const int scanDelay = 5000; // 5 seconds
 
+// Non-constant variables
+// Timing
+unsigned long prevMillisDoor = 0;
+unsigned long prevMillisScan = 0;
+//unsigned long currMillis = 0;
+// Controls
+bool doorOpen = false;
+//bool justCheckedRFID = false;
 
 // put function declarations here:
 void playSongWithDelay(const uint16_t*, const float*, const uint8_t);
 void grantAccess();
 void denyAccess();
-
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-  Blynk.run();
-}
+void open();
+void close();
+bool verifyRFID();
 
 // Helper functions
 void playSongWithDelay(const int* melody, const float* beats, const int len) {
@@ -69,9 +74,64 @@ void playSongWithDelay(const int* melody, const float* beats, const int len) {
 void grantAccess() {
   // Play pleasant sound, disable actuator
   playSongWithDelay(MELODY, MELODY_BEATS, MELODY_LEN);
+  Serial.println("Access granted!");
 }
 
 void denyAccess() {
   // Play unpleasant sound, don't disable actuator
   playSongWithDelay(TRITONE, TRITONE_BEATS, TRITONE_LEN);
+  Serial.println("Access denied.");
+}
+
+void open() {
+  // Open the door
+  doorOpen = true;
+  prevMillisDoor = millis();
+  Serial.println("Opening door...");
+}
+
+void close() {
+  // Close the door
+  doorOpen = false;
+  Serial.println("Closing door...");
+}
+
+bool verifyRFID() {
+  // Verify RFID card
+  if (/*RFID is valid*/) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  Wire.begin();
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  Blynk.run();
+  if (/*RFID is detected */ & (millis() - prevMillisScan > scanDelay)) {
+    prevMillisScan = millis();
+    Serial.println("RFID detected. Verifying...");
+    if (verifyRFID()) {
+      grantAccess();
+      open();
+      continue;
+    } else {
+      denyAccess();
+      continue;
+    }
+  }
+  if (/*tilt sensor tilted*/) {
+    denyAccess();
+    close();
+  }
+  if (doorOpen & (millis() - prevMillisDoor > openTime)) {
+    close();
+  }
 }
