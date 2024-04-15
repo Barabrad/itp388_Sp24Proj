@@ -28,8 +28,10 @@ Qwiic_Rfid myRfid(RFID_ADDR);
 // ***** Constant Globals ****** //
 // ***************************** //
 // Pins
-const int8_t BUZZER_PIN = 14;
+const int8_t BUZZER_PIN = 14; //adjust values based on pin mapping
 const int8_t MAGSWITCH_PIN = 15;
+const int8_t TILT_PIN = 16;
+const int8_t SOLENOID_PIN = 17;
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
@@ -60,10 +62,11 @@ const u_long WARNING_DELAY = 10000; // 10 seconds
 u_long prevMillisDoor = 0;
 u_long prevMillisScan = 0;
 u_long prevMillisWarning = 0;
-//u_long currMillis = 0;
 // Controls
 bool doorOpen = false;
 //bool justCheckedRFID = false;
+// Other
+uint8_t tilt_position = 0;
 
 // ***************************** //
 // ***** Helper Functions ****** //
@@ -105,6 +108,7 @@ void warning() {
 
 void open() {
   // Open the door
+  digitalWrite(SOLENOID_PIN, HIGH);
   doorOpen = true;
   prevMillisDoor = millis();
   Serial.println("Opening door...");
@@ -112,13 +116,19 @@ void open() {
 
 void close() {
   // Close the door
+  digitalWrite(SOLENOID_PIN, LOW);
   doorOpen = false;
   Serial.println("Closing door...");
 }
 
 bool isTilted() {
   // Figure out how to read from tilt sensor
-  Serial.println("Doorknob tilted.");
+  tilt_position = map(analogRead(TILT_PIN), 0, 4095, 0, 342);
+  //Serial.println(tilt_position); //for testing
+  if (tilt_position >= 30 && tilt_position <= 120) { //adjust values during testing
+    Serial.println("Doorknob tilted.");
+    return true;
+  }
   return false; // Placeholder so we can verify code works
 }
 
@@ -144,6 +154,10 @@ void setup() {
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
   // Make sure RFID is reachable
   if (!(myRfid.begin())) {Serial.println("Could not communicate with Qwiic RFID!");}
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(MAGSWITCH_PIN, INPUT);
+  pinMode(TILT_PIN, INPUT);
+  pinMode(SOLENOID_PIN, OUTPUT);
 }
 
 void loop() {
