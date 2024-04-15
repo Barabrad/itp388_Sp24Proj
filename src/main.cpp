@@ -10,14 +10,16 @@
 #include "pitches.h"
 #include <Wire.h> 
 #include "SparkFun_Qwiic_Rfid.h"
+#include "secrets_def.h" // Default WiFi username and password defined here
+//#include "secrets.h" // Specific WiFi username and password defined here
 
 typedef unsigned long u_long;
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
 // https://examples.blynk.cc/?board=ESP32&shield=ESP32%20WiFi&example=GettingStarted%2FBlynkBlink
-char ssid[] = "YourNetworkName";
-char pass[] = "YourPassword";
+char ssid[] = WIFI_NAME;
+char pass[] = WIFI_PASS;
 
 // Initialize RFID reader
 Qwiic_Rfid myRfid(RFID_ADDR);
