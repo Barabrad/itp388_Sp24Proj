@@ -1,0 +1,9 @@
+Inputs
+Manual unlock button
+Force lock button?
+
+Outputs
+RFID Status
+Lock Status
+Door Status
+Warnings (string)?

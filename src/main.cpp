@@ -27,6 +27,7 @@ Qwiic_Rfid myRfid(RFID_ADDR);
 // ***************************** //
 // Pins
 const int8_t BUZZER_PIN = 14;
+const int8_t MAGSWITCH_PIN = 15;
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
@@ -39,11 +40,16 @@ const float MELODY_BEATS[MELODY_LEN] = {0.25, 0.25, 0.25, 0.25, 0.75, 0.75, 1, 0
 const uint8_t TRITONE_LEN = 2; // # of notes (including rests)
 const uint16_t TRITONE[TRITONE_LEN] = {NOTE_F5, NOTE_B4};
 const float TRITONE_BEATS[TRITONE_LEN] = {0.5, 0.5};
+// Warning
+const uint8_t WARNING_LEN = 5; // # of notes (including rests)
+const uint16_t WARNING[WARNING_LEN] = {NOTE_G5, NOTE_F5, NOTE_D5, NOTE_C5, NOTE_A4};
+const float WARNING_BEATS[WARNING_LEN] = {0.5, 0.5, 0.5, 0.5, 1};
 // Accepted RFID Cards
 const String VALID_IDS[] = {"Enter IDs here after you test each card", "The ways in which you talk to me", "Suguru", "Have me wishing I were gone", "Satoru"};
 // Timing
 const u_long TIME_OPEN = 15000; // 15 seconds
 const u_long SCAN_DELAY = 5000; // 5 seconds
+const u_long WARNING_DELAY = 10000; // 10 seconds
 
 // ***************************** //
 // **** Non-Const. Globals ***** //
@@ -51,6 +57,7 @@ const u_long SCAN_DELAY = 5000; // 5 seconds
 // Timing
 u_long prevMillisDoor = 0;
 u_long prevMillisScan = 0;
+u_long prevMillisWarning = 0;
 //u_long currMillis = 0;
 // Controls
 bool doorOpen = false;
@@ -88,6 +95,12 @@ void denyAccess() {
   Serial.println("Access denied.");
 }
 
+void warning() {
+  // Play warning sound, don't disable actuator
+  playSongWithDelay(WARNING, WARNING_BEATS, WARNING_LEN);
+  Serial.println("Warning.");
+}
+
 void open() {
   // Open the door
   doorOpen = true;
@@ -103,11 +116,13 @@ void close() {
 
 bool isTilted() {
   // Figure out how to read from tilt sensor
+  Serial.println("Doorknob tilted.");
   return false; // Placeholder so we can verify code works
 }
 
 bool verifyRFID(String tag) {
   // Verify RFID card
+  Serial.println(tag);
   bool isValid = false;
   for (String s : VALID_IDS) {
     if (tag == s) {isValid = true; break;} // If the tag matches a valid ID, break with true
@@ -132,24 +147,28 @@ void setup() {
 void loop() {
   Blynk.run();
   String tag = myRfid.getTag(); // Check for a scan
+  //checks RFID
   if ((tag != "") && (millis() - prevMillisScan > SCAN_DELAY)) {
     prevMillisScan = millis();
     Serial.println("RFID detected. Verifying...");
     if (verifyRFID(tag)) {
       grantAccess();
       open();
-      //continue; // I don't think "continue;" works in loop()
     } else {
       denyAccess();
-      //continue;
     }
-  }
-  // We need to figure out how to prevent the denial of access temporarily after a successful swipe
-  if (isTilted()) {
-    denyAccess();
-    close();
-  }
-  if (doorOpen && (millis() - prevMillisDoor > TIME_OPEN)) {
-    close();
+  } else { //everything after only runs if RFID check does not go through
+    if (doorOpen && (millis() - prevMillisDoor > TIME_OPEN)) { //time to close door
+      if (digitalRead(MAGSWITCH_PIN) == LOW) { //mag switch closed
+        close();
+        doorOpen = false;
+      } else if (digitalRead(MAGSWITCH_PIN) == HIGH && millis() - prevMillisWarning > WARNING_DELAY) { //mag switch open
+        warning();
+        prevMillisWarning = millis();
+      }
+    } else if (!doorOpen && isTilted()) { //door open and tilted
+      close();
+      warning();
+    }
   }
 }
