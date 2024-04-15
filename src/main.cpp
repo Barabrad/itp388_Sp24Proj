@@ -121,7 +121,7 @@ void close() {
 
 bool isTilted() {
   // Figure out how to read from tilt sensor
-  tilt_position = map(analogRead(TILT_PIN), 0, 4095, 0, 342)
+  tilt_position = map(analogRead(TILT_PIN), 0, 4095, 0, 342);
   //Serial.println(tilt_position); //for testing
   if (tilt_position >= 30 && tilt_position <= 120) { //adjust values during testing
     Serial.println("Doorknob tilted.");
