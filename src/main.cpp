@@ -1,6 +1,7 @@
-#define BLYNK_TEMPLATE_ID "[REDACTED]"
-#define BLYNK_TEMPLATE_NAME "388 Project"
-#define BLYNK_AUTH_TOKEN "[REDACTED]"
+// WiFi and Blynk Credentials
+#include "secrets_def.h" // Default
+//#include "secrets.h" // Specific (user must make this file)
+
 #define RFID_ADDR 0x7D // Default I2C address for RFID
 
 #include <Arduino.h>
@@ -16,8 +17,8 @@ typedef unsigned long u_long;
 // Your WiFi credentials.
 // Set password to "" for open networks.
 // https://examples.blynk.cc/?board=ESP32&shield=ESP32%20WiFi&example=GettingStarted%2FBlynkBlink
-char ssid[] = "YourNetworkName";
-char pass[] = "YourPassword";
+char ssid[] = WIFI_NAME;
+char pass[] = WIFI_PASS;
 
 // Initialize RFID reader
 Qwiic_Rfid myRfid(RFID_ADDR);
