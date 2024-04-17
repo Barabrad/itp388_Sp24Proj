@@ -23,8 +23,8 @@ typedef unsigned long u_long;
 // Your WiFi credentials.
 // Set password to "" for open networks.
 // https://examples.blynk.cc/?board=ESP32&shield=ESP32%20WiFi&example=GettingStarted%2FBlynkBlink
-char ssid[] = WIFI_NAME;
-char pass[] = WIFI_PASS;
+char ssid[] = SECRET_SSID;
+char pass[] = SECRET_PASS;
 
 
 // ***************************** //
