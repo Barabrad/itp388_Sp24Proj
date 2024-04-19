@@ -1,8 +1,13 @@
+/*
+Todo:
+-make piezo buzzer play notes without interrupting other functionality (millis code)
+-uncomment/implement Blynk code
+
+*/
+
 // WiFi and Blynk Credentials
 #include "secrets_def.h" // Default
 //#include "secrets.h" // Specific (user must make this file)
-
-#define RFID_ADDR 0x7D // Default I2C address for RFID
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -10,7 +15,8 @@
 #include <BlynkSimpleEsp32.h>
 #include "pitches.h"
 #include <Wire.h> 
-#include "SparkFun_Qwiic_Rfid.h"
+#include <MFRC522.h>
+#include <SPI.h>
 
 typedef unsigned long u_long;
 
@@ -20,8 +26,6 @@ typedef unsigned long u_long;
 char ssid[] = WIFI_NAME;
 char pass[] = WIFI_PASS;
 
-// Initialize RFID reader
-Qwiic_Rfid myRfid(RFID_ADDR);
 
 // ***************************** //
 // ***** Constant Globals ****** //
@@ -29,8 +33,10 @@ Qwiic_Rfid myRfid(RFID_ADDR);
 // Pins
 const int8_t BUZZER_PIN = 14; //adjust values based on pin mapping
 const int8_t MAGSWITCH_PIN = 15;
-const int8_t TILT_PIN = 16;
-const int8_t SOLENOID_PIN = 17;
+const int8_t TILT_PIN = 34;
+const int8_t SOLENOID_PIN = 23;
+const int8_t SS_PIN = 33;
+const int8_t RST_PIN = 32;
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
@@ -66,6 +72,11 @@ bool doorOpen = false;
 //bool justCheckedRFID = false;
 // Other
 uint8_t tilt_position = 0;
+
+// Initialize RFID reader
+MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance.
+String rfid = "";
+const String cards[] = {"8B A0 F0 13", "EA D4 00 80"};
 
 // ***************************** //
 // ***** Helper Functions ****** //
@@ -133,40 +144,73 @@ bool isTilted() {
 
 bool verifyRFID(String tag) {
   // Verify RFID card
-  Serial.println(tag);
-  bool isValid = false;
-  for (String s : VALID_IDS) {
-    if (tag == s) {isValid = true; break;} // If the tag matches a valid ID, break with true
+  for (int i = 0; i < sizeof(cards)/sizeof(cards[0]); i++) {
+    if (tag == cards[i]) {
+      return true;
+    }
   }
-  return isValid;
+  return false;
+}
+
+String readRFID() {
+  String scannedCard = "";
+  if (mfrc522.PICC_IsNewCardPresent() == true) {
+    if (mfrc522.PICC_ReadCardSerial() == true) {
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        if (mfrc522.uid.uidByte[i] < 0x10) {
+          scannedCard = scannedCard + " 0";
+        } else {
+          scannedCard = scannedCard + " ";
+        }
+        scannedCard = scannedCard + String(mfrc522.uid.uidByte[i], HEX);
+      }
+      scannedCard.toUpperCase();
+      scannedCard.trim();
+      Serial.println("Scanned card: " + scannedCard);
+    }
+  }
+  return scannedCard;
 }
 
 // ***************************** //
 // ****** Main Functions ******* //
 // ***************************** //
 void setup() {
-  // Begin Serial
   Serial.begin(9600);
-  // Begin I-squared-C
 	Wire.begin(); 
   // Begin Blynk
-  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
-  // Make sure RFID is reachable
-  if (!(myRfid.begin())) {Serial.println("Could not communicate with Qwiic RFID!");}
+  //Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+  delay(2000);
+  Serial.println("Checkpoint 2 complete.");
+
+  // Initialize RFID reader
+  SPI.begin(); // Init SPI bus
+  mfrc522.PCD_Init(); // Init MFRC522
+  delay(4); // Optional delay. Some board do need more time after init to be ready, see Readme
+  mfrc522.PCD_DumpVersionToSerial(); // Show details of PCD - MFRC522 Card Reader details
+
+  Serial.println("RFID initialized.");
+
+  // Set up pins
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(MAGSWITCH_PIN, INPUT);
   pinMode(TILT_PIN, INPUT);
   pinMode(SOLENOID_PIN, OUTPUT);
+  pinMode(SS_PIN, OUTPUT);
+  pinMode(RST_PIN, OUTPUT);
+
+  Serial.println("Setup complete.");
 }
 
 void loop() {
-  Blynk.run();
-  String tag = myRfid.getTag(); // Check for a scan
+  //Blynk.run();
+
   //checks RFID
-  if ((tag != "") && (millis() - prevMillisScan > SCAN_DELAY)) {
+  rfid = readRFID();
+  if (rfid != "" && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
-    Serial.println("RFID detected. Verifying...");
-    if (verifyRFID(tag)) {
+    if (verifyRFID(rfid)) {
       grantAccess();
       open();
     } else {
