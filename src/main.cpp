@@ -1,8 +1,6 @@
 /*
 Todo:
--make piezo buzzer play notes without interrupting other functionality (millis code)
 -uncomment/implement Blynk code
-
 */
 
 // WiFi and Blynk Credentials
@@ -67,6 +65,7 @@ const u_long WARNING_DELAY = 10000; // 10 seconds
 u_long prevMillisDoor = 0;
 u_long prevMillisScan = 0;
 u_long prevMillisWarning = 0;
+u_long prevMillisSound = 0;
 // Controls
 bool doorOpen = false;
 //bool justCheckedRFID = false;
@@ -77,6 +76,13 @@ uint8_t tilt_position = 0;
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance.
 String rfid = "";
 const String cards[] = {"8B A0 F0 13", "EA D4 00 80"};
+
+//Unorganized variables for non-blocking speaker code
+int8_t noteIndex = 0;
+bool grant_access = false;
+bool deny_access = false;
+bool warning = false;
+u_long pauseBetweenNotes = 0;
 
 // ***************************** //
 // ***** Helper Functions ****** //
@@ -98,23 +104,57 @@ void playSongWithDelay(const uint16_t* melody, const float* beats, const uint8_t
   }
 }
 
-void grantAccess() {
-  // Play pleasant sound, disable actuator
-  playSongWithDelay(MELODY, MELODY_BEATS, MELODY_LEN);
-  Serial.println("Access granted!");
+void selectSound() {
+  if (grant_access) {
+    playSound(MELODY, MELODY_BEATS, MELODY_LEN);
+  } else if (deny_access) {
+    playSound(TRITONE, TRITONE_BEATS, TRITONE_LEN);
+  } else if (warning) {
+    playSound(WARNING, WARNING_BEATS, WARNING_LEN);
+  } //else no sound is played
 }
 
-void denyAccess() {
-  // Play unpleasant sound, don't disable actuator
-  playSongWithDelay(TRITONE, TRITONE_BEATS, TRITONE_LEN);
-  Serial.println("Access denied.");
+//plays a sound given inputs of the notes array, duration array, and number of notes
+void playSound(const uint16_t* notes, const float* duration, const int num_notes) {
+  //for every note, play the note for 1 * the note duration and pause for 0.3 * the note duration
+  if (millis() - prevMillisSound >= pauseBetweenNotes) {
+    prevMillisSound = millis();
+    int noteTime = 1000 / duration[noteIndex];
+    //plays the note
+    tone(BUZZER_PIN, notes[noteIndex], noteTime);
+    pauseBetweenNotes = noteTime * 1.3;
+    //increments noteIndex after the note is played
+    noteIndex = noteIndex + 1;
+    //resets noteIndex and boolean variables if play_alarm is true or the last note has been played, without changing play_alarm itself so that the alarm can be played continuously until it is deactivated
+    if (noteIndex >= num_notes) {
+      noteIndex = 0;
+      grant_access = false;
+      deny_access = false;
+      warning = false;
+      //resets pauseBetweenNotes for the next sound that is played
+      pauseBetweenNotes = 0;
+      noTone(BUZZER_PIN);
+    }
+  }
 }
 
-void warning() {
-  // Play warning sound, don't disable actuator
-  playSongWithDelay(WARNING, WARNING_BEATS, WARNING_LEN);
-  Serial.println("Warning.");
-}
+// void grantAccess() {
+//   // Play pleasant sound, disable actuator
+//   playSongWithDelay(MELODY, MELODY_BEATS, MELODY_LEN);
+//   Serial.println("Access granted!");
+// }
+
+// void denyAccess() {
+//   // Play unpleasant sound, don't disable actuator
+//   playSongWithDelay(TRITONE, TRITONE_BEATS, TRITONE_LEN);
+//   Serial.println("Access denied.");
+// }
+
+// void warning() {
+//   // Play warning sound, don't disable actuator
+//   playSongWithDelay(WARNING, WARNING_BEATS, WARNING_LEN);
+//   Serial.println("Warning.");
+// }
 
 void open() {
   // Open the door
@@ -205,16 +245,20 @@ void setup() {
 
 void loop() {
   //Blynk.run();
-
+  selectSound();
   //checks RFID
   rfid = readRFID();
   if (rfid != "" && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
     if (verifyRFID(rfid)) {
-      grantAccess();
+      Serial.println("Access granted!");
+      grant_access = true;
+      //grantAccess();
       open();
     } else {
-      denyAccess();
+      Serial.println("Access denied.");
+      deny_access = true;
+      //denyAccess();
     }
   } else { //everything after only runs if RFID check does not go through
     if (doorOpen && (millis() - prevMillisDoor > TIME_OPEN)) { //time to close door
@@ -222,12 +266,16 @@ void loop() {
         close();
         doorOpen = false;
       } else if (digitalRead(MAGSWITCH_PIN) == HIGH && millis() - prevMillisWarning > WARNING_DELAY) { //mag switch open
-        warning();
+        Serial.println("Warning.");
+        warning = true;
+        //warning();
         prevMillisWarning = millis();
       }
     } else if (!doorOpen && isTilted()) { //door open and tilted
       close();
-      warning();
+      Serial.println("Warning.");
+      warning = true;
+      //warning();
     }
   }
 }
