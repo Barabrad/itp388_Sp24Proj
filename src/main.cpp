@@ -51,8 +51,6 @@ const float TRITONE_BEATS[TRITONE_LEN] = {0.5, 0.5};
 const uint8_t WARNING_LEN = 5; // # of notes (including rests)
 const uint16_t WARNING[WARNING_LEN] = {NOTE_G5, NOTE_F5, NOTE_D5, NOTE_C5, NOTE_A4};
 const float WARNING_BEATS[WARNING_LEN] = {0.5, 0.5, 0.5, 0.5, 1};
-// Accepted RFID Cards
-const String VALID_IDS[] = {"Enter IDs here after you test each card", "The ways in which you talk to me", "Suguru", "Have me wishing I were gone", "Satoru"};
 // Timing
 const u_long TIME_OPEN = 15000; // 15 seconds
 const u_long SCAN_DELAY = 5000; // 5 seconds
@@ -75,9 +73,9 @@ uint8_t tilt_position = 0;
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance.
 String rfid = "";
-const String cards[] = {"8B A0 F0 13", "EA D4 00 80"};
+const String VALID_CARDS[] = {"8B A0 F0 13", "EA D4 00 80"};
 
-//Unorganized variables for non-blocking speaker code
+// Unorganized variables for non-blocking speaker code
 int8_t noteIndex = 0;
 bool grant_access = false;
 bool deny_access = false;
@@ -104,16 +102,6 @@ void playSongWithDelay(const uint16_t* melody, const float* beats, const uint8_t
   }
 }
 
-void selectSound() {
-  if (grant_access) {
-    playSound(MELODY, MELODY_BEATS, MELODY_LEN);
-  } else if (deny_access) {
-    playSound(TRITONE, TRITONE_BEATS, TRITONE_LEN);
-  } else if (warning) {
-    playSound(WARNING, WARNING_BEATS, WARNING_LEN);
-  } //else no sound is played
-}
-
 //plays a sound given inputs of the notes array, duration array, and number of notes
 void playSound(const uint16_t* notes, const float* duration, const int num_notes) {
   //for every note, play the note for 1 * the note duration and pause for 0.3 * the note duration
@@ -136,6 +124,16 @@ void playSound(const uint16_t* notes, const float* duration, const int num_notes
       noTone(BUZZER_PIN);
     }
   }
+}
+
+void selectSound() {
+  if (grant_access) {
+    playSound(MELODY, MELODY_BEATS, MELODY_LEN);
+  } else if (deny_access) {
+    playSound(TRITONE, TRITONE_BEATS, TRITONE_LEN);
+  } else if (warning) {
+    playSound(WARNING, WARNING_BEATS, WARNING_LEN);
+  } //else no sound is played
 }
 
 // void grantAccess() {
@@ -184,8 +182,8 @@ bool isTilted() {
 
 bool verifyRFID(String tag) {
   // Verify RFID card
-  for (int i = 0; i < sizeof(cards)/sizeof(cards[0]); i++) {
-    if (tag == cards[i]) {
+  for (int i = 0; i < sizeof(VALID_CARDS)/sizeof(VALID_CARDS[0]); i++) {
+    if (tag == VALID_CARDS[i]) {
       return true;
     }
   }
