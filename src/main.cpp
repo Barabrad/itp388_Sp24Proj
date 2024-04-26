@@ -29,12 +29,12 @@ char pass[] = SECRET_PASS;
 // ***** Constant Globals ****** //
 // ***************************** //
 // Pins
-const int8_t BUZZER_PIN = 14; //adjust values based on pin mapping
-const int8_t MAGSWITCH_PIN = 15;
+const int8_t BUZZER_PIN = 13; // Adjust values based on pin mapping
+const int8_t MAGSWITCH_PIN = 32;
 const int8_t TILT_PIN = 34;
-const int8_t SOLENOID_PIN = 23;
-const int8_t SS_PIN = 33;
-const int8_t RST_PIN = 32;
+const int8_t SOLENOID_PIN = 15;
+const int8_t SS_PIN = 17; // SDA for RFID Reader
+const int8_t RST_PIN = 16; // Reset for RFID Reader
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
