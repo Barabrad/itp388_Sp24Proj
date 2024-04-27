@@ -31,7 +31,8 @@ char pass[] = SECRET_PASS;
 // Pins
 const int8_t BUZZER_PIN = 13; // Adjust values based on pin mapping
 const int8_t MAGSWITCH_PIN = 32;
-const int8_t TILT_PIN = 34;
+const int8_t TILT_IN_PIN = 34; // Tilt sensor on the inside
+const int8_t TILT_OUT_PIN = 39; // Tilt sensor on the outside (can override locking)
 const int8_t SOLENOID_PIN = 15;
 const int8_t SS_PIN = 17; // SDA for RFID Reader
 const int8_t RST_PIN = 16; // Reset for RFID Reader
@@ -55,6 +56,7 @@ const float WARNING_BEATS[WARNING_LEN] = {0.5, 0.5, 0.5, 0.5, 1};
 const u_long TIME_OPEN = 15000; // 15 seconds
 const u_long SCAN_DELAY = 5000; // 5 seconds
 const u_long WARNING_DELAY = 10000; // 10 seconds
+const u_long TIME_ACTUATE = 2000; // 2 seconds (to push the lock to close)
 
 // ***************************** //
 // **** Non-Const. Globals ***** //
@@ -64,14 +66,16 @@ u_long prevMillisDoor = 0;
 u_long prevMillisScan = 0;
 u_long prevMillisWarning = 0;
 u_long prevMillisSound = 0;
+u_long prevMillisAct = 0;
 // Controls
 bool doorOpen = false;
+bool actauted = false;
 //bool justCheckedRFID = false;
 // Other
 uint8_t tilt_position = 0;
 
 // Initialize RFID reader
-MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance.
+MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
 String rfid = "";
 const String VALID_CARDS[] = {"8B A0 F0 13", "EA D4 00 80"};
 
@@ -102,26 +106,29 @@ void playSongWithDelay(const uint16_t* melody, const float* beats, const uint8_t
   }
 }
 
-//plays a sound given inputs of the notes array, duration array, and number of notes
-void playSound(const uint16_t* notes, const float* duration, const int num_notes) {
-  //for every note, play the note for 1 * the note duration and pause for 0.3 * the note duration
+// Plays a sound given inputs of the notes array, duration (beats) array, and number of notes
+void playSound(const uint16_t* melody, const float* beats, const int num_notes) {
+  // For every note, play the note for its duration (pausing would make the code much more complex)
   if (millis() - prevMillisSound >= pauseBetweenNotes) {
     prevMillisSound = millis();
-    int noteTime = 1000 / duration[noteIndex];
-    //plays the note
-    tone(BUZZER_PIN, notes[noteIndex], noteTime);
-    pauseBetweenNotes = noteTime * 1.3;
-    //increments noteIndex after the note is played
+    int note_i = melody[noteIndex];
+    float beats_i = beats[noteIndex];
+    // Goal: Play the note and have a delay
+    int noteTime = (beats_i/BPS)*1000; // ms
+    // Plays the note, but with no duration (since duration is blocking)
+    if (note_i == 0) {noTone(BUZZER_PIN);}
+    else {tone(BUZZER_PIN, note_i);}
+    pauseBetweenNotes = noteTime;
+    // Increments noteIndex after the note is played
     noteIndex = noteIndex + 1;
-    //resets noteIndex and boolean variables if play_alarm is true or the last note has been played, without changing play_alarm itself so that the alarm can be played continuously until it is deactivated
+    // Resets noteIndex and boolean variables if play_alarm is true or the last note has been played, without changing play_alarm itself so that the alarm can be played continuously until it is deactivated
     if (noteIndex >= num_notes) {
       noteIndex = 0;
       grant_access = false;
       deny_access = false;
       warning = false;
-      //resets pauseBetweenNotes for the next sound that is played
-      pauseBetweenNotes = 0;
-      noTone(BUZZER_PIN);
+      pauseBetweenNotes = 0; // Resets pauseBetweenNotes for the next sound that is played
+      noTone(BUZZER_PIN); // Stops buzzer
     }
   }
 }
@@ -156,24 +163,27 @@ void selectSound() {
 
 void open() {
   // Open the door
-  digitalWrite(SOLENOID_PIN, HIGH);
+  digitalWrite(SOLENOID_PIN, LOW);
   doorOpen = true;
+  actauted = false;
   prevMillisDoor = millis();
   Serial.println("Opening door...");
 }
 
 void close() {
   // Close the door
-  digitalWrite(SOLENOID_PIN, LOW);
+  digitalWrite(SOLENOID_PIN, HIGH);
   doorOpen = false;
+  actauted = true;
+  prevMillisAct = millis();
   Serial.println("Closing door...");
 }
 
-bool isTilted() {
+bool isTilted(const uint8_t TILT_PIN) {
   // Figure out how to read from tilt sensor
   tilt_position = map(analogRead(TILT_PIN), 0, 4095, 0, 342);
-  //Serial.println(tilt_position); //for testing
-  if (tilt_position >= 30 && tilt_position <= 120) { //adjust values during testing
+  //Serial.println(tilt_position); // For testing
+  if (tilt_position >= 30 && tilt_position <= 120) { // Adjust values during testing
     Serial.println("Doorknob tilted.");
     return true;
   }
@@ -225,7 +235,7 @@ void setup() {
   // Initialize RFID reader
   SPI.begin(); // Init SPI bus
   mfrc522.PCD_Init(); // Init MFRC522
-  delay(4); // Optional delay. Some board do need more time after init to be ready, see Readme
+  delay(1000); // Optional delay. Some board do need more time after init to be ready, see Readme
   mfrc522.PCD_DumpVersionToSerial(); // Show details of PCD - MFRC522 Card Reader details
 
   Serial.println("RFID initialized.");
@@ -233,7 +243,8 @@ void setup() {
   // Set up pins
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(MAGSWITCH_PIN, INPUT);
-  pinMode(TILT_PIN, INPUT);
+  pinMode(TILT_IN_PIN, INPUT);
+  pinMode(TILT_OUT_PIN, INPUT);
   pinMode(SOLENOID_PIN, OUTPUT);
   pinMode(SS_PIN, OUTPUT);
   pinMode(RST_PIN, OUTPUT);
@@ -244,7 +255,12 @@ void setup() {
 void loop() {
   //Blynk.run();
   selectSound();
-  //checks RFID
+  // Checks actuator (can't have on for long or else it burns out)
+  if (actauted && (millis() - prevMillisAct > TIME_ACTUATE)) {
+    actauted = false;
+    Serial.println("Actuation time ended.");
+  }
+  // Checks RFID
   rfid = readRFID();
   if (rfid != "" && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
@@ -258,22 +274,27 @@ void loop() {
       deny_access = true;
       //denyAccess();
     }
-  } else { //everything after only runs if RFID check does not go through
-    if (doorOpen && (millis() - prevMillisDoor > TIME_OPEN)) { //time to close door
-      if (digitalRead(MAGSWITCH_PIN) == LOW) { //mag switch closed
+  } else { // Everything after only runs if RFID check does not go through
+    if (doorOpen && (millis() - prevMillisDoor > TIME_OPEN)) { // Time to close door
+      if (digitalRead(MAGSWITCH_PIN) == LOW) { // Mag switch closed
         close();
-        doorOpen = false;
-      } else if (digitalRead(MAGSWITCH_PIN) == HIGH && millis() - prevMillisWarning > WARNING_DELAY) { //mag switch open
+        //doorOpen = false; // Redundant, since close() changes that variable
+      } else if (digitalRead(MAGSWITCH_PIN) == HIGH && millis() - prevMillisWarning > WARNING_DELAY) { // Mag switch open
         Serial.println("Warning.");
         warning = true;
         //warning();
         prevMillisWarning = millis();
       }
-    } else if (!doorOpen && isTilted()) { //door open and tilted
+    } else if (!doorOpen && isTilted(TILT_IN_PIN)) { // Door closed and tilted from inside, but without RFID read
       close();
       Serial.println("Warning.");
       warning = true;
       //warning();
+    } else if (!doorOpen && isTilted(TILT_OUT_PIN)) { // Door closed and tilted from outside, but without RFID read
+      open();
+      Serial.println("Opened from outside.");
+      grant_access = true;
+      //grantAccess();
     }
   }
 }
