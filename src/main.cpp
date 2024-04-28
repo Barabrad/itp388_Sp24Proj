@@ -29,13 +29,14 @@ char pass[] = SECRET_PASS;
 // ***** Constant Globals ****** //
 // ***************************** //
 // Pins
-const int8_t BUZZER_PIN = 13; // Adjust values based on pin mapping
-const int8_t MAGSWITCH_PIN = 32;
-const int8_t TILT_IN_PIN = 34; // Tilt sensor on the inside
-const int8_t TILT_OUT_PIN = 39; // Tilt sensor on the outside (can override locking)
-const int8_t SOLENOID_PIN = 15;
-const int8_t SS_PIN = 17; // SDA for RFID Reader
-const int8_t RST_PIN = 16; // Reset for RFID Reader
+const uint8_t BUZZER_PIN = 13; // Adjust values based on pin mapping
+const uint8_t MAGSWITCH_PIN = 32;
+const uint8_t TILT_IN_PIN = 34; // Tilt sensor on the inside
+const uint8_t TILT_OUT_PIN = 39; // Tilt sensor on the outside (can override locking)
+const uint8_t SOLENOID_PIN = 15;
+const uint8_t SS_PIN = 17; // SDA for RFID Reader
+const uint8_t RST_PIN = 16; // Reset for RFID Reader
+const uint8_t BAT_PIN = A13; // https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/power-management#measuring-battery-3122383
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
@@ -57,6 +58,7 @@ const u_long TIME_OPEN = 15000; // 15 seconds
 const u_long SCAN_DELAY = 5000; // 5 seconds
 const u_long WARNING_DELAY = 10000; // 10 seconds
 const u_long TIME_ACTUATE = 2000; // 2 seconds (to push the lock to close)
+const u_long BAT_UPDATE = 60000; // 60 seconds
 
 // ***************************** //
 // **** Non-Const. Globals ***** //
@@ -67,12 +69,14 @@ u_long prevMillisScan = 0;
 u_long prevMillisWarning = 0;
 u_long prevMillisSound = 0;
 u_long prevMillisAct = 0;
+u_long prevMillisBat = 0;
 // Controls
 bool doorOpen = false;
 bool actauted = false;
 //bool justCheckedRFID = false;
 // Other
 uint8_t tilt_position = 0;
+float batVoltage = -1;
 
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
@@ -248,6 +252,7 @@ void setup() {
   pinMode(SOLENOID_PIN, OUTPUT);
   pinMode(SS_PIN, OUTPUT);
   pinMode(RST_PIN, OUTPUT);
+  pinMode(BAT_PIN, INPUT);
 
   Serial.println("Setup complete.");
 }
@@ -255,6 +260,14 @@ void setup() {
 void loop() {
   //Blynk.run();
   selectSound();
+  // Measure battery voltage
+  if ((millis() - prevMillisBat > BAT_UPDATE) || (batVoltage == -1)) {
+    prevMillisBat = millis();
+    // https://forums.adafruit.com/viewtopic.php?t=196384
+    float halfVolt = analogRead(BAT_PIN);
+    batVoltage = (halfVolt*2)*(3.3/4096); // 3.3 reference voltage; 12-bit ADC -> 4096 values
+    Serial.println("Battery: " + String(batVoltage) + " V");
+  }
   // Checks actuator (can't have on for long or else it burns out)
   if (actauted && (millis() - prevMillisAct > TIME_ACTUATE)) {
     actauted = false;
@@ -262,7 +275,7 @@ void loop() {
   }
   // Checks RFID
   rfid = readRFID();
-  if (rfid != "" && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
+  if ((rfid != "") && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
     if (verifyRFID(rfid)) {
       Serial.println("Access granted!");
@@ -287,7 +300,7 @@ void loop() {
       }
     } else if (!doorOpen && isTilted(TILT_IN_PIN)) { // Door closed and tilted from inside, but without RFID read
       close();
-      Serial.println("Warning.");
+      Serial.println("Warning: Attempted opening from inside");
       warning = true;
       //warning();
     } else if (!doorOpen && isTilted(TILT_OUT_PIN)) { // Door closed and tilted from outside, but without RFID read
