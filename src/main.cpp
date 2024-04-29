@@ -81,7 +81,8 @@ float batVoltage = -1;
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
 String rfid = "";
-const String VALID_CARDS[] = {"8B A0 F0 13", "EA D4 00 80"};
+const String VALID_CARDS[] = {"61 C5 7A 10"};
+//RFID tag: 03 E2 0C 50
 
 // Unorganized variables for non-blocking speaker code
 int8_t noteIndex = 0;
