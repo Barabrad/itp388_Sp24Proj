@@ -37,6 +37,8 @@ const uint8_t SOLENOID_PIN = 15;
 const uint8_t SS_PIN = 17; // SDA for RFID Reader
 const uint8_t RST_PIN = 16; // Reset for RFID Reader
 const uint8_t BAT_PIN = A13; // https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/power-management#measuring-battery-3122383
+const uint8_t BUT_VAL_PIN = 21; // To simulate valid RFID swipe
+const uint8_t BUT_INVAL_PIN = 23; // To simulate invalid RFID swipe
 // Array for notes (zeros are rests)
 const uint8_t BPM = 135; // Beats per minute
 const float BPS = BPM/60.0; // Beats per second
@@ -59,6 +61,7 @@ const u_long SCAN_DELAY = 5000; // 5 seconds
 const u_long WARNING_DELAY = 10000; // 10 seconds
 const u_long TIME_ACTUATE = 2000; // 2 seconds (to push the lock to close)
 const u_long BAT_UPDATE = 60000; // 60 seconds
+const u_long TIME_TBST = 5000; // 5 seconds for each troubleshoot packet
 
 // ***************************** //
 // **** Non-Const. Globals ***** //
@@ -70,7 +73,10 @@ u_long prevMillisWarning = 0;
 u_long prevMillisSound = 0;
 u_long prevMillisAct = 0;
 u_long prevMillisBat = 0;
+u_long prevMillisTbst = 0; // For troubleshooting tilt
 // Controls
+const bool DO_TBST = false; // Enable/disable troubleshooting packets
+const bool USE_BUT_FOR_CARD = false; // Enable buttons for testing if RDID is unavailable
 bool doorOpen = false;
 bool actuated = false;
 //bool justCheckedRFID = false;
@@ -81,8 +87,8 @@ float batVoltage = -1;
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
 String rfid = "";
-const String VALID_CARDS[] = {"61 C5 7A 10"};
-//RFID tag: 03 E2 0C 50
+const String VALID_CARDS[] = {"61 C5 7A 10"}; // The card that came with the reader
+// RFID tag (for invalid demo): 03 E2 0C 50
 
 // Unorganized variables for non-blocking speaker code
 int8_t noteIndex = 0;
@@ -115,17 +121,6 @@ void playSongWithDelay(const uint16_t* melody, const float* beats, const uint8_t
 void playSound(const uint16_t* melody, const float* beats, const int num_notes) {
   // For every note, play the note for its duration (pausing would make the code much more complex)
   if (millis() - prevMillisSound >= pauseBetweenNotes) {
-    prevMillisSound = millis();
-    int note_i = melody[noteIndex];
-    float beats_i = beats[noteIndex];
-    // Goal: Play the note and have a delay
-    int noteTime = (beats_i/BPS)*1000; // ms
-    // Plays the note, but with no duration (since duration is blocking)
-    if (note_i == 0) {noTone(BUZZER_PIN);}
-    else {tone(BUZZER_PIN, note_i);}
-    pauseBetweenNotes = noteTime;
-    // Increments noteIndex after the note is played
-    noteIndex = noteIndex + 1;
     // Resets noteIndex and boolean variables if play_alarm is true or the last note has been played, without changing play_alarm itself so that the alarm can be played continuously until it is deactivated
     if (noteIndex >= num_notes) {
       noteIndex = 0;
@@ -134,6 +129,19 @@ void playSound(const uint16_t* melody, const float* beats, const int num_notes) 
       warning = false;
       pauseBetweenNotes = 0; // Resets pauseBetweenNotes for the next sound that is played
       noTone(BUZZER_PIN); // Stops buzzer
+    }
+    else {
+      prevMillisSound = millis();
+      int note_i = melody[noteIndex];
+      float beats_i = beats[noteIndex];
+      int noteTime = (beats_i/BPS)*1000; // ms
+      // Plays the note, but with no duration (since duration is blocking)
+      if (note_i == 0) {noTone(BUZZER_PIN);}
+      else {tone(BUZZER_PIN, note_i);}
+      pauseBetweenNotes = noteTime; // Gap in notes would be hard to do without blocking
+      // Increments noteIndex after the note is played
+      //Serial.println(String(noteIndex) + ": " + String(note_i) + " Hz");
+      noteIndex = noteIndex + 1;
     }
   }
 }
@@ -166,11 +174,16 @@ void selectSound() {
 //   Serial.println("Warning.");
 // }
 
+void disableAct() {
+  // Disable the actuator
+  digitalWrite(SOLENOID_PIN, LOW);
+  actauted = false;
+}
+
 void open() {
   // Open the door
-  digitalWrite(SOLENOID_PIN, LOW);
+  disableAct();
   doorOpen = true;
-  actuated = false;
   prevMillisDoor = millis();
   Serial.println("Opening door...");
 }
@@ -256,6 +269,8 @@ void setup() {
   pinMode(SS_PIN, OUTPUT);
   pinMode(RST_PIN, OUTPUT);
   pinMode(BAT_PIN, INPUT);
+  pinMode(BUT_VAL_PIN, INPUT);
+  pinMode(BUT_INVAL_PIN, INPUT);
 
   Serial.println("Setup complete.");
 }
@@ -263,6 +278,16 @@ void setup() {
 void loop() {
   //Blynk.run();
   selectSound();
+  // Check tilt values
+  if ((millis() - prevMillisTbst > TIME_TBST) && DO_TBST) {
+    prevMillisTbst = millis();
+    int outer = map(analogRead(TILT_OUT_PIN), 0, 4095, 0, 342);
+    int inner = map(analogRead(TILT_IN_PIN), 0, 4095, 0, 342);
+    int valid = digitalRead(BUT_VAL_PIN);
+    int invalid = digitalRead(BUT_INVAL_PIN);
+    Serial.println("(O,I) = (" + String(outer) + "," + String(inner) + ")");
+    Serial.println("(V,IV) = (" + String(valid) + "," + String(invalid) + ")");
+  }
   // Measure battery voltage
   if ((millis() - prevMillisBat > BAT_UPDATE) || (batVoltage == -1)) {
     prevMillisBat = millis();
@@ -271,13 +296,19 @@ void loop() {
     batVoltage = (halfVolt*2)*(3.3/4096); // 3.3 reference voltage; 12-bit ADC -> 4096 values
     Serial.println("Battery: " + String(batVoltage) + " V");
   }
-  // Checks actuator (can't have on for long or else it burns out)
-  if (actuated && (millis() - prevMillisAct > TIME_ACTUATE)) {
-    actuated = false;
+  // Checks actuator (can't keep on for long or else it burns out)
+  if (actauted && (millis() - prevMillisAct > TIME_ACTUATE)) {
+    prevMillisAct = millis();
+    disableAct();
     Serial.println("Actuation time ended.");
   }
   // Checks RFID
-  rfid = readRFID();
+  if (!USE_BUT_FOR_CARD) {rfid = readRFID();}
+  else {
+    if (digitalRead(BUT_VAL_PIN) == HIGH) {rfid = "8B A0 F0 13";}
+    else if (digitalRead(BUT_INVAL_PIN) == HIGH) {rfid = "Nuh uh";}
+    else {rfid = "";}
+  }
   if ((rfid != "") && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
     if (verifyRFID(rfid)) {
