@@ -83,6 +83,8 @@ bool actuated = false;
 // Other
 uint8_t tilt_position = 0;
 float batVoltage = -1;
+//int8_t prevLockVal = 0;
+int8_t currLockVal = 0;
 
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
@@ -240,6 +242,11 @@ String readRFID() {
   return scannedCard;
 }
 
+BLYNK_WRITE(V2) {
+  //prevLockVal = currLockVal;
+  currLockVal = param.asInt(); // assigning incoming value from pin V2 to a variable
+}
+
 // ***************************** //
 // ****** Main Functions ******* //
 // ***************************** //
@@ -295,6 +302,7 @@ void loop() {
     float halfVolt = analogRead(BAT_PIN);
     batVoltage = (halfVolt*2)*(3.3/4096); // 3.3 reference voltage; 12-bit ADC -> 4096 values
     Serial.println("Battery: " + String(batVoltage) + " V");
+    Blynk.virtualWrite(V0, batVoltage);
   }
   // Checks actuator (can't keep on for long or else it burns out)
   if (actuated && (millis() - prevMillisAct > TIME_ACTUATE)) {
@@ -309,7 +317,12 @@ void loop() {
     else if (digitalRead(BUT_INVAL_PIN) == HIGH) {rfid = "Nuh uh";}
     else {rfid = "";}
   }
-  if ((rfid != "") && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
+  if (currLockVal == 1 && !doorOpen) {
+    Serial.println("Access granted!");
+    grant_access = true;
+    //grantAccess();
+    open();
+  } else if ((rfid != "") && (millis() - prevMillisScan > SCAN_DELAY) && !doorOpen) {
     prevMillisScan = millis();
     if (verifyRFID(rfid)) {
       Serial.println("Access granted!");
@@ -344,4 +357,5 @@ void loop() {
       //grantAccess();
     }
   }
+  Blynk.virtualWrite(V1, actuated);
 }
