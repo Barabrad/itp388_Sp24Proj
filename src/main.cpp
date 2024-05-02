@@ -72,7 +72,7 @@ u_long prevMillisAct = 0;
 u_long prevMillisBat = 0;
 // Controls
 bool doorOpen = false;
-bool actauted = false;
+bool actuated = false;
 //bool justCheckedRFID = false;
 // Other
 uint8_t tilt_position = 0;
@@ -170,7 +170,7 @@ void open() {
   // Open the door
   digitalWrite(SOLENOID_PIN, LOW);
   doorOpen = true;
-  actauted = false;
+  actuated = false;
   prevMillisDoor = millis();
   Serial.println("Opening door...");
 }
@@ -179,7 +179,7 @@ void close() {
   // Close the door
   digitalWrite(SOLENOID_PIN, HIGH);
   doorOpen = false;
-  actauted = true;
+  actuated = true;
   prevMillisAct = millis();
   Serial.println("Closing door...");
 }
@@ -187,6 +187,8 @@ void close() {
 bool isTilted(const uint8_t TILT_PIN) {
   // Figure out how to read from tilt sensor
   tilt_position = map(analogRead(TILT_PIN), 0, 4095, 0, 342);
+  // Serial.println("Tilt angle: " + String(tilt_position));
+  // delay(500);
   //Serial.println(tilt_position); // For testing
   if (tilt_position >= 30 && tilt_position <= 120) { // Adjust values during testing
     Serial.println("Doorknob tilted.");
@@ -270,8 +272,8 @@ void loop() {
     Serial.println("Battery: " + String(batVoltage) + " V");
   }
   // Checks actuator (can't have on for long or else it burns out)
-  if (actauted && (millis() - prevMillisAct > TIME_ACTUATE)) {
-    actauted = false;
+  if (actuated && (millis() - prevMillisAct > TIME_ACTUATE)) {
+    actuated = false;
     Serial.println("Actuation time ended.");
   }
   // Checks RFID
