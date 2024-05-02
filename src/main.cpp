@@ -179,7 +179,7 @@ void selectSound() {
 void disableAct() {
   // Disable the actuator
   digitalWrite(SOLENOID_PIN, LOW);
-  actauted = false;
+  actuated = false;
 }
 
 void open() {
