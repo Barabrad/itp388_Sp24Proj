@@ -177,7 +177,7 @@ void selectSound() {
 void disableAct() {
   // Disable the actuator
   digitalWrite(SOLENOID_PIN, LOW);
-  actauted = false;
+  actuated = false;
 }
 
 void open() {
@@ -297,7 +297,7 @@ void loop() {
     Serial.println("Battery: " + String(batVoltage) + " V");
   }
   // Checks actuator (can't keep on for long or else it burns out)
-  if (actauted && (millis() - prevMillisAct > TIME_ACTUATE)) {
+  if (actuated && (millis() - prevMillisAct > TIME_ACTUATE)) {
     prevMillisAct = millis();
     disableAct();
     Serial.println("Actuation time ended.");
