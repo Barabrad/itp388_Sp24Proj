@@ -1,8 +1,3 @@
-/*
-Todo:
--uncomment/implement Blynk code
-*/
-
 // WiFi and Blynk Credentials
 #include "secrets_def.h" // Default
 //#include "secrets.h" // Specific (user must make this file)
@@ -78,13 +73,13 @@ u_long prevMillisTbst = 0; // For troubleshooting tilt
 const bool DO_TBST = false; // Enable/disable troubleshooting packets
 const bool USE_BUT_FOR_CARD = false; // Enable buttons for testing if RDID is unavailable
 bool doorOpen = false;
+bool prevActuated = false;
 bool actuated = false;
 //bool justCheckedRFID = false;
 // Other
 uint8_t tilt_position = 0;
 float batVoltage = -1;
-//int8_t prevLockVal = 0;
-int8_t currLockVal = 0;
+uint8_t overrideVal = 0;
 
 // Initialize RFID reader
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
@@ -93,7 +88,7 @@ const String VALID_CARDS[] = {"61 C5 7A 10"}; // The card that came with the rea
 // RFID tag (for invalid demo): 03 E2 0C 50
 
 // Unorganized variables for non-blocking speaker code
-int8_t noteIndex = 0;
+uint8_t noteIndex = 0;
 bool grant_access = false;
 bool deny_access = false;
 bool warning = false;
@@ -243,8 +238,8 @@ String readRFID() {
 }
 
 BLYNK_WRITE(V2) {
-  //prevLockVal = currLockVal;
-  currLockVal = param.asInt(); // assigning incoming value from pin V2 to a variable
+  //prevLockVal = overrideVal;
+  overrideVal = param.asInt(); // assigning incoming value from pin V2 to a variable
 }
 
 // ***************************** //
@@ -254,10 +249,11 @@ void setup() {
   Serial.begin(9600);
 	Wire.begin(); 
   // Begin Blynk
-  //Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
 
   delay(2000);
-  Serial.println("Checkpoint 2 complete.");
+  Blynk.virtualWrite(V1, 0); // Set initial actuation value to false
+  Serial.println("Blynk initialized.");
 
   // Initialize RFID reader
   SPI.begin(); // Init SPI bus
@@ -283,8 +279,9 @@ void setup() {
 }
 
 void loop() {
-  //Blynk.run();
+  Blynk.run();
   selectSound();
+  prevActuated = actuated;
   // Check tilt values
   if ((millis() - prevMillisTbst > TIME_TBST) && DO_TBST) {
     prevMillisTbst = millis();
@@ -317,7 +314,7 @@ void loop() {
     else if (digitalRead(BUT_INVAL_PIN) == HIGH) {rfid = "Nuh uh";}
     else {rfid = "";}
   }
-  if (currLockVal == 1 && !doorOpen) {
+  if (overrideVal == 1 && !doorOpen) {
     Serial.println("Access granted!");
     grant_access = true;
     //grantAccess();
@@ -357,5 +354,5 @@ void loop() {
       //grantAccess();
     }
   }
-  Blynk.virtualWrite(V1, actuated);
+  if (actuated != prevActuated) {Blynk.virtualWrite(V1, actuated);}
 }
